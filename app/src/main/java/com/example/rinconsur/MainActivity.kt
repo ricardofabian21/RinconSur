@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import com.example.rinconsur.database.AppDatabase
+import com.example.rinconsur.database.MIGRATION_1_2
 import com.example.rinconsur.model.Usuario
 import com.example.rinconsur.ui.theme.RinconSurTheme
 import com.example.rinconsur.view.*
@@ -28,7 +29,9 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             AppDatabase::class.java,
             "rinconsur_db"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
 
         val usuarioDao = database.usuarioDao()
 
@@ -68,7 +71,19 @@ class MainActivity : ComponentActivity() {
                     }
                 )
 
-                val probadorViewModel: ProbadorViewModel = viewModel()
+                val probadorViewModel: ProbadorViewModel = viewModel(
+                    factory = object : ViewModelProvider.Factory {
+                        @Suppress("UNCHECKED_CAST")
+                        override fun <T : ViewModel> create(
+                            modelClass: Class<T>
+                        ): T {
+                            return ProbadorViewModel(
+                                application,
+                                database
+                            ) as T
+                        }
+                    }
+                )
 
                 var pantalla by remember { mutableStateOf("Login") }
                 var usuarioEditar by remember { mutableStateOf<Usuario?>(null) }
@@ -83,11 +98,14 @@ class MainActivity : ComponentActivity() {
                         }
                     )
 
-
                     "Admin" -> AdminScreen(
                         probadorViewModel = probadorViewModel,
-                        onCerrarSesion = { pantalla = "Login" },
-                        onGestionarUsuarios = { pantalla = "Usuarios" },
+                        onCerrarSesion = {
+                            pantalla = "Login"
+                        },
+                        onGestionarUsuarios = {
+                            pantalla = "Usuarios"
+                        },
                         onGestionarProbadores = {
                             pantalla = "ProbadoresAdmin"
                         },
@@ -99,7 +117,9 @@ class MainActivity : ComponentActivity() {
 
                     "Personal" -> PersonalScreen(
                         probadorViewModel = probadorViewModel,
-                        onCerrarSesion = { pantalla = "Login" },
+                        onCerrarSesion = {
+                            pantalla = "Login"
+                        },
                         onVerProbadores = {
                             pantalla = "ProbadoresPersonal"
                         },
@@ -109,19 +129,21 @@ class MainActivity : ComponentActivity() {
                         }
                     )
 
-
                     "ProbadoresAdmin" -> ProbadoresScreen(
                         probadorViewModel = probadorViewModel,
                         esAdministrador = true,
-                        onVolver = { pantalla = "Admin" }
+                        onVolver = {
+                            pantalla = "Admin"
+                        }
                     )
 
                     "ProbadoresPersonal" -> ProbadoresScreen(
                         probadorViewModel = probadorViewModel,
                         esAdministrador = false,
-                        onVolver = { pantalla = "Personal" }
+                        onVolver = {
+                            pantalla = "Personal"
+                        }
                     )
-
 
                     "Galeria" -> GaleriaScreen(
                         probadorViewModel = probadorViewModel,
@@ -143,7 +165,9 @@ class MainActivity : ComponentActivity() {
                             }
                             pantalla = "Formulario"
                         },
-                        onVolver = { pantalla = "Admin" }
+                        onVolver = {
+                            pantalla = "Admin"
+                        }
                     )
 
                     "Formulario" -> FormularioUsuarioScreen(
@@ -156,7 +180,9 @@ class MainActivity : ComponentActivity() {
                             }
                             pantalla = "Usuarios"
                         },
-                        onCancelar = { pantalla = "Usuarios" }
+                        onCancelar = {
+                            pantalla = "Usuarios"
+                        }
                     )
 
                     else -> LoginScreen(

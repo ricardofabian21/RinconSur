@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.rinconsur.model.Evidencia
 import com.example.rinconsur.viewmodel.ProbadorViewModel
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -280,7 +281,13 @@ fun GaleriaScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("ELIMINAR")
+                    Text(
+                        if (eliminando) {
+                            "ELIMINANDO..."
+                        } else {
+                            "ELIMINAR"
+                        }
+                    )
                 }
             },
             dismissButton = {

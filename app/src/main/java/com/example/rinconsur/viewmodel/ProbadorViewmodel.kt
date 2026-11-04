@@ -5,116 +5,162 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
+import com.example.rinconsur.database.AppDatabase
 import com.example.rinconsur.model.Evidencia
 import com.example.rinconsur.model.Probador
 import com.example.rinconsur.storage.ProbadorStorage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class ProbadorViewModel(application: Application) : AndroidViewModel(application) {
+class ProbadorViewModel(
+    application: Application,
+    private val database: AppDatabase
+) : AndroidViewModel(application) {
 
     private val storage = ProbadorStorage(application)
+    private val probadorDao = database.probadorDao()
+    private val evidenciaDao = database.evidenciaDao()
 
     val probadores = mutableStateListOf<Probador>()
     val evidencias = mutableStateListOf<Evidencia>()
 
+    private var cargando = true
+
     init {
+        viewModelScope.launch {
+            cargarDatos()
+        }
+    }
+
+    private suspend fun cargarDatos() {
+        withContext(Dispatchers.IO) {
+            if (!storage.migracionRoomCompletada()) {
+                val antiguos = obtenerProbadoresAntiguos()
+                val historial = storage.obtenerHistorial().toMutableList()
+
+                if (historial.isEmpty()) {
+                    antiguos.forEach { probador ->
+                        val ruta = probador.fotoEvidencia
+
+                        if (ruta != null && File(ruta).exists()) {
+                            val fecha = System.currentTimeMillis()
+                            val nuevoId = maxOf(
+                                fecha,
+                                (historial.maxOfOrNull { it.id } ?: 0L) + 1L
+                            )
+
+                            historial.add(
+                                Evidencia(
+                                    id = nuevoId,
+                                    idProbador = probador.id,
+                                    numeroProbador = probador.numero,
+                                    rutaFoto = ruta,
+                                    fecha = fecha
+                                )
+                            )
+                        }
+                    }
+                }
+
+                database.withTransaction {
+                    val existentes = probadorDao.obtenerProbadores()
+                    val evidenciasExistentes = evidenciaDao.obtenerEvidencias()
+
+                    if (existentes.isEmpty()) {
+                        val iniciales = if (antiguos.isNotEmpty()) {
+                            antiguos
+                        } else {
+                            crearProbadoresIniciales()
+                        }
+
+                        probadorDao.guardarProbadores(iniciales)
+                    }
+
+                    if (evidenciasExistentes.isEmpty() && historial.isNotEmpty()) {
+                        evidenciaDao.guardarEvidencias(historial)
+                    }
+                }
+
+                storage.marcarMigracionRoomCompletada()
+            }
+
+            val listaProbadores = probadorDao.obtenerProbadores()
+            val listaEvidencias = evidenciaDao.obtenerEvidencias()
+
+            withContext(Dispatchers.Main) {
+                probadores.clear()
+                probadores.addAll(listaProbadores)
+
+                evidencias.clear()
+                evidencias.addAll(listaEvidencias)
+
+                cargando = false
+            }
+        }
+    }
+
+    private fun obtenerProbadoresAntiguos(): List<Probador> {
         val datos = storage.obtener()
 
         if (datos.isEmpty()) {
-            probadores.addAll(
-                listOf(
-                    Probador(1, 1, "Disponible"),
-                    Probador(2, 2, "Disponible"),
-                    Probador(3, 3, "Ocupado", System.currentTimeMillis()),
-                    Probador(4, 4, "Pendiente de revisión"),
-                    Probador(5, 5, "En mantención")
+            return emptyList()
+        }
+
+        val lista = JSONArray(datos)
+        val resultado = mutableListOf<Probador>()
+
+        for (i in 0 until lista.length()) {
+            val item = lista.getJSONObject(i)
+
+            resultado.add(
+                Probador(
+                    id = item.getInt("id"),
+                    numero = item.getInt("numero"),
+                    estado = item.getString("estado"),
+                    inicioOcupacion = if (item.isNull("inicio")) {
+                        null
+                    } else {
+                        item.getLong("inicio")
+                    },
+                    fotoEvidencia = if (item.isNull("foto")) {
+                        null
+                    } else {
+                        item.getString("foto")
+                    }
                 )
             )
-            guardarProbadores()
-        } else {
-            val lista = JSONArray(datos)
-
-            for (i in 0 until lista.length()) {
-                val item = lista.getJSONObject(i)
-
-                probadores.add(
-                    Probador(
-                        id = item.getInt("id"),
-                        numero = item.getInt("numero"),
-                        estado = item.getString("estado"),
-                        inicioOcupacion = if (item.isNull("inicio")) {
-                            null
-                        } else {
-                            item.getLong("inicio")
-                        },
-                        fotoEvidencia = if (item.isNull("foto")) {
-                            null
-                        } else {
-                            item.getString("foto")
-                        }
-                    )
-                )
-            }
         }
 
-        evidencias.addAll(storage.obtenerHistorial())
-
-        if (evidencias.isEmpty()) {
-            probadores.forEach { probador ->
-                val ruta = probador.fotoEvidencia
-
-                if (ruta != null && File(ruta).exists()) {
-                    val fecha = System.currentTimeMillis()
-
-                    evidencias.add(
-                        Evidencia(
-                            id = fecha + evidencias.size,
-                            idProbador = probador.id,
-                            numeroProbador = probador.numero,
-                            rutaFoto = ruta,
-                            fecha = fecha
-                        )
-                    )
-                }
-            }
-
-            if (evidencias.isNotEmpty()) {
-                storage.guardarHistorial(evidencias)
-            }
-        }
+        return resultado
     }
 
-    private fun guardarProbadores() {
-        val lista = JSONArray()
-
-        probadores.forEach { probador ->
-            val item = JSONObject()
-
-            item.put("id", probador.id)
-            item.put("numero", probador.numero)
-            item.put("estado", probador.estado)
-            item.put(
-                "inicio",
-                probador.inicioOcupacion ?: JSONObject.NULL
-            )
-            item.put(
-                "foto",
-                probador.fotoEvidencia ?: JSONObject.NULL
-            )
-
-            lista.put(item)
-        }
-
-        storage.guardar(lista.toString())
+    private fun crearProbadoresIniciales(): List<Probador> {
+        return listOf(
+            Probador(1, 1, "Disponible"),
+            Probador(2, 2, "Disponible"),
+            Probador(
+                3,
+                3,
+                "Ocupado",
+                System.currentTimeMillis()
+            ),
+            Probador(4, 4, "Pendiente de revisión"),
+            Probador(5, 5, "En mantención")
+        )
     }
 
     fun cambiarEstado(id: Int, nuevoEstado: String) {
+        if (cargando) return
+
         val indice = probadores.indexOfFirst { it.id == id }
 
         if (indice != -1) {
@@ -126,7 +172,7 @@ class ProbadorViewModel(application: Application) : AndroidViewModel(application
                 null
             }
 
-            probadores[indice] = probador.copy(
+            val actualizado = probador.copy(
                 estado = nuevoEstado,
                 inicioOcupacion = inicio,
                 fotoEvidencia = if (nuevoEstado == "Pendiente de revisión") {
@@ -136,7 +182,11 @@ class ProbadorViewModel(application: Application) : AndroidViewModel(application
                 }
             )
 
-            guardarProbadores()
+            probadores[indice] = actualizado
+
+            viewModelScope.launch(Dispatchers.IO) {
+                probadorDao.guardarProbador(actualizado)
+            }
         }
     }
 
@@ -184,34 +234,52 @@ class ProbadorViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun eliminarEvidencia(ruta: String): Boolean {
-        val evidencia = evidencias.find { it.rutaFoto == ruta }
-            ?: return false
+    suspend fun eliminarEvidencia(ruta: String): Boolean {
+        if (cargando) return false
 
-        val eliminada = storage.eliminarFoto(evidencia.rutaFoto)
+        return try {
+            withContext(Dispatchers.IO) {
+                val evidencia = evidenciaDao.obtenerEvidencias()
+                    .find { it.rutaFoto == ruta }
+                    ?: return@withContext false
 
-        if (!eliminada) {
-            return false
+                database.withTransaction {
+                    evidenciaDao.eliminarEvidencia(evidencia)
+
+                    val probadoresActuales = probadorDao.obtenerProbadores()
+
+                    probadoresActuales
+                        .filter { it.fotoEvidencia == ruta }
+                        .forEach { probador ->
+                            probadorDao.guardarProbador(
+                                probador.copy(fotoEvidencia = null)
+                            )
+                        }
+                }
+
+                val restantes = evidenciaDao.obtenerEvidencias()
+                val probadoresActuales = probadorDao.obtenerProbadores()
+
+                val fotoEnUso = restantes.any { it.rutaFoto == ruta } ||
+                        probadoresActuales.any { it.fotoEvidencia == ruta }
+
+                if (!fotoEnUso) {
+                    storage.eliminarFoto(ruta)
+                }
+
+                withContext(Dispatchers.Main) {
+                    evidencias.clear()
+                    evidencias.addAll(restantes)
+
+                    probadores.clear()
+                    probadores.addAll(probadoresActuales)
+                }
+
+                true
+            }
+        } catch (e: Exception) {
+            false
         }
-
-        evidencias.removeAll { it.rutaFoto == ruta }
-        storage.guardarHistorial(evidencias)
-
-        val indice = probadores.indexOfFirst {
-            it.fotoEvidencia == ruta
-        }
-
-        if (indice != -1) {
-            val probador = probadores[indice]
-
-            probadores[indice] = probador.copy(
-                fotoEvidencia = null
-            )
-
-            guardarProbadores()
-        }
-
-        return true
     }
 
     fun obtenerEvidencia(id: Int): Bitmap? {
@@ -226,18 +294,35 @@ class ProbadorViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun agregarProbador() {
+        if (cargando) return
+
         val nuevoId = (probadores.maxOfOrNull { it.id } ?: 0) + 1
         val nuevoNumero = (probadores.maxOfOrNull { it.numero } ?: 0) + 1
 
-        probadores.add(
-            Probador(nuevoId, nuevoNumero, "Disponible")
+        val nuevo = Probador(
+            nuevoId,
+            nuevoNumero,
+            "Disponible"
         )
 
-        guardarProbadores()
+        probadores.add(nuevo)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            probadorDao.guardarProbador(nuevo)
+        }
     }
 
     fun eliminarProbador(id: Int) {
-        probadores.removeAll { it.id == id }
-        guardarProbadores()
+        if (cargando) return
+
+        val probador = probadores.find {
+            it.id == id
+        } ?: return
+
+        probadores.remove(probador)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            probadorDao.eliminarProbador(probador)
+        }
     }
 }
