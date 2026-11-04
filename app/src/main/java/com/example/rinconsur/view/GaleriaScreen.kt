@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -27,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.example.rinconsur.model.Evidencia
 import com.example.rinconsur.viewmodel.ProbadorViewModel
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -41,11 +43,17 @@ fun GaleriaScreen(
         SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
     }
 
+    val coroutineScope = rememberCoroutineScope()
+
     var evidenciaEliminar by remember {
         mutableStateOf<Evidencia?>(null)
     }
 
     var mensajeError by remember {
+        mutableStateOf(false)
+    }
+
+    var eliminando by remember {
         mutableStateOf(false)
     }
 
@@ -75,7 +83,7 @@ fun GaleriaScreen(
                     probadorViewModel.evidencias.sortedByDescending {
                         it.fecha
                     },
-                    key = { it.rutaFoto }
+                    key = { it.id }
                 ) { evidencia ->
                     Card(
                         modifier = Modifier.fillMaxWidth()
@@ -119,6 +127,7 @@ fun GaleriaScreen(
                                         evidenciaEliminar = evidencia
                                         mensajeError = false
                                     },
+                                    enabled = !eliminando,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text("ELIMINAR FOTO")
@@ -134,7 +143,9 @@ fun GaleriaScreen(
     if (evidenciaEliminar != null) {
         AlertDialog(
             onDismissRequest = {
-                evidenciaEliminar = null
+                if (!eliminando) {
+                    evidenciaEliminar = null
+                }
             },
             title = {
                 Text("Eliminar fotografía")
@@ -149,25 +160,44 @@ fun GaleriaScreen(
                     onClick = {
                         val evidencia = evidenciaEliminar
 
-                        if (evidencia != null) {
-                            val eliminada = probadorViewModel.eliminarEvidencia(
-                                evidencia.rutaFoto
-                            )
+                        if (evidencia != null && !eliminando) {
+                            eliminando = true
+                            mensajeError = false
 
-                            mensajeError = !eliminada
+                            coroutineScope.launch {
+                                try {
+                                    val eliminada =
+                                        probadorViewModel.eliminarEvidencia(
+                                            evidencia.rutaFoto
+                                        )
+
+                                    mensajeError = !eliminada
+                                } catch (e: Exception) {
+                                    mensajeError = true
+                                } finally {
+                                    eliminando = false
+                                    evidenciaEliminar = null
+                                }
+                            }
                         }
-
-                        evidenciaEliminar = null
-                    }
+                    },
+                    enabled = !eliminando
                 ) {
-                    Text("ELIMINAR")
+                    Text(
+                        if (eliminando) {
+                            "ELIMINANDO..."
+                        } else {
+                            "ELIMINAR"
+                        }
+                    )
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
                         evidenciaEliminar = null
-                    }
+                    },
+                    enabled = !eliminando
                 ) {
                     Text("CANCELAR")
                 }

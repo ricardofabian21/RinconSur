@@ -227,44 +227,52 @@ class ProbadorViewModel(
         }
     }
 
-    fun eliminarEvidencia(ruta: String): Boolean {
+    suspend fun eliminarEvidencia(ruta: String): Boolean {
         if (cargando) return false
 
-        val evidencia = evidencias.find {
-            it.rutaFoto == ruta
-        } ?: return false
+        return try {
+            withContext(Dispatchers.IO) {
+                val evidencia = evidenciaDao.obtenerEvidencias()
+                    .find { it.rutaFoto == ruta }
+                    ?: return@withContext false
 
-        val eliminada = storage.eliminarFoto(evidencia.rutaFoto)
+                database.withTransaction {
+                    evidenciaDao.eliminarEvidencia(evidencia)
 
-        if (!eliminada) {
-            return false
-        }
+                    val probadoresActuales = probadorDao.obtenerProbadores()
 
-        evidencias.removeAll { it.rutaFoto == ruta }
-
-        val indice = probadores.indexOfFirst {
-            it.fotoEvidencia == ruta
-        }
-
-        val actualizado = if (indice != -1) {
-            probadores[indice].copy(fotoEvidencia = null).also {
-                probadores[indice] = it
-            }
-        } else {
-            null
-        }
-
-        viewModelScope.launch(Dispatchers.IO) {
-            database.withTransaction {
-                evidenciaDao.eliminarEvidencia(evidencia)
-
-                if (actualizado != null) {
-                    probadorDao.guardarProbador(actualizado)
+                    probadoresActuales
+                        .filter { it.fotoEvidencia == ruta }
+                        .forEach { probador ->
+                            probadorDao.guardarProbador(
+                                probador.copy(fotoEvidencia = null)
+                            )
+                        }
                 }
-            }
-        }
 
-        return true
+                val restantes = evidenciaDao.obtenerEvidencias()
+                val probadoresActuales = probadorDao.obtenerProbadores()
+
+                val fotoEnUso = restantes.any { it.rutaFoto == ruta } ||
+                        probadoresActuales.any { it.fotoEvidencia == ruta }
+
+                if (!fotoEnUso) {
+                    storage.eliminarFoto(ruta)
+                }
+
+                withContext(Dispatchers.Main) {
+                    evidencias.clear()
+                    evidencias.addAll(restantes)
+
+                    probadores.clear()
+                    probadores.addAll(probadoresActuales)
+                }
+
+                true
+            }
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun obtenerEvidencia(id: Int): Bitmap? {
