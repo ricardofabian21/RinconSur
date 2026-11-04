@@ -1,4 +1,3 @@
-
 package com.example.rinconsur.viewmodel
 
 import android.app.Application
@@ -16,10 +15,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.File
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class ProbadorViewModel(
     application: Application,
@@ -190,46 +185,56 @@ class ProbadorViewModel(
         }
     }
 
+    // --- FUNCIÓN FUSIONADA Y PROTEGIDA CONTRA CRASHES ---
     fun guardarEvidencia(id: Int, imagen: Bitmap?) {
-        // 1. Validación de seguridad contra NullPointerException
-        if (imagen == null || imagen.isRecycled) {
-            return
-        }
+        if (cargando) return
+        // 1. Protección contra NullPointerException
+        if (imagen == null || imagen.isRecycled) return
 
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val indice = probadores.indexOfFirst { it.id == id }
+        val indice = probadores.indexOfFirst { it.id == id }
 
-                if (indice != -1) {
-                    val probador = probadores[indice]
+        if (indice != -1) {
+            val probador = probadores[indice]
 
-                    // 2. Guardar foto en almacenamiento interno (hilo IO)
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    // 2. Guardar foto en disco en hilo IO en segundo plano
                     val ruta = storage.guardarFoto(id, imagen)
                     val fecha = System.currentTimeMillis()
 
-                    withContext(Dispatchers.Main) {
-                        val nuevaEvidencia = Evidencia(
-                            id = fecha,
-                            idProbador = probador.id,
-                            numeroProbador = probador.numero,
-                            rutaFoto = ruta,
-                            fecha = fecha
-                        )
+                    val nuevoId = maxOf(
+                        fecha,
+                        (evidencias.maxOfOrNull { it.id } ?: 0L) + 1L
+                    )
 
-                        evidencias.add(nuevaEvidencia)
-                        storage.guardarHistorial(evidencias)
+                    val evidencia = Evidencia(
+                        id = nuevoId,
+                        idProbador = probador.id,
+                        numeroProbador = probador.numero,
+                        rutaFoto = ruta,
+                        fecha = fecha
+                    )
 
-                        probadores[indice] = probador.copy(
-                            estado = "Pendiente de revisión",
-                            inicioOcupacion = null,
-                            fotoEvidencia = ruta
-                        )
+                    val actualizado = probador.copy(
+                        estado = "Pendiente de revisión",
+                        inicioOcupacion = null,
+                        fotoEvidencia = ruta
+                    )
 
-                        guardarProbadores()
+                    // 3. Persistir transaccionalmente en Room
+                    database.withTransaction {
+                        evidenciaDao.guardarEvidencia(evidencia)
+                        probadorDao.guardarProbador(actualizado)
                     }
+
+                    // 4. Actualizar listas de Compose en el Hilo Principal
+                    withContext(Dispatchers.Main) {
+                        evidencias.add(0, evidencia)
+                        probadores[indice] = actualizado
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }

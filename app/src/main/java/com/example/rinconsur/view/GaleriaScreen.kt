@@ -40,10 +40,13 @@ fun GaleriaScreen(
         SimpleDateFormat("dd/MM/yyyy - HH:mm", Locale.getDefault())
     }
 
+    val coroutineScope = rememberCoroutineScope()
+
     var evidenciaEliminar by remember { mutableStateOf<Evidencia?>(null) }
     var mensajeError by remember { mutableStateOf(false) }
+    var eliminando by remember { mutableStateOf(false) }
 
-    val evidenciasOrdenadas = remember(probadorViewModel.evidencias) {
+    val evidenciasOrdenadas = remember(probadorViewModel.evidencias.toList()) {
         probadorViewModel.evidencias.sortedByDescending { it.fecha }
     }
 
@@ -57,7 +60,7 @@ fun GaleriaScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onVolver) {
+                    IconButton(onClick = onVolver, enabled = !eliminando) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Volver"
@@ -91,7 +94,7 @@ fun GaleriaScreen(
                     ) {
                         Icon(Icons.Default.Warning, contentDescription = null)
                         Text(
-                            text = "No se pudo eliminar la fotografía del almacenamiento.",
+                            text = "No se pudo eliminar la fotografía de la base de datos.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -120,7 +123,7 @@ fun GaleriaScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Las capturas tomadas desde los probadores aparecerán aquí.",
+                            text = "Las capturas guardadas desde los probadores aparecerán aquí.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -131,7 +134,7 @@ fun GaleriaScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
                 ) {
-                    items(evidenciasOrdenadas, key = { it.rutaFoto }) { evidencia ->
+                    items(evidenciasOrdenadas, key = { it.id }) { evidencia ->
                         ElevatedCard(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp)
@@ -142,7 +145,7 @@ fun GaleriaScreen(
                                     .padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                // Header de la Tarjeta (Probador y Fecha)
+                                // Header: Probador + Marca de tiempo
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -190,7 +193,7 @@ fun GaleriaScreen(
                                     }
                                 }
 
-                                // Contenedor de la Imagen
+                                // Carga y Renderizado Seguro de la Imagen (Sin NPEs)
                                 val fotografia = remember(evidencia.rutaFoto) {
                                     probadorViewModel.obtenerFotoHistorial(evidencia.rutaFoto)
                                 }
@@ -202,10 +205,10 @@ fun GaleriaScreen(
                                         .clip(RoundedCornerShape(12.dp)),
                                     color = MaterialTheme.colorScheme.surfaceContainerHigh
                                 ) {
-                                    if (fotografia != null) {
+                                    if (fotografia != null && !fotografia.isRecycled) {
                                         Image(
                                             bitmap = fotografia.asImageBitmap(),
-                                            contentDescription = "Evidencia del probador ${evidencia.numeroProbador}",
+                                            contentDescription = "Evidencia probador ${evidencia.numeroProbador}",
                                             contentScale = ContentScale.Crop,
                                             modifier = Modifier.fillMaxSize()
                                         )
@@ -223,13 +226,14 @@ fun GaleriaScreen(
                                     }
                                 }
 
-                                // Botón de Eliminación (Solo Admin)
+                                // Opción de Eliminación (Solo Admin)
                                 if (esAdministrador) {
                                     OutlinedButton(
                                         onClick = {
                                             evidenciaEliminar = evidencia
                                             mensajeError = false
                                         },
+                                        enabled = !eliminando,
                                         colors = ButtonDefaults.outlinedButtonColors(
                                             contentColor = MaterialTheme.colorScheme.error
                                         ),
@@ -257,7 +261,9 @@ fun GaleriaScreen(
     // Modal de Confirmación
     if (evidenciaEliminar != null) {
         AlertDialog(
-            onDismissRequest = { evidenciaEliminar = null },
+            onDismissRequest = {
+                if (!eliminando) evidenciaEliminar = null
+            },
             icon = {
                 Icon(
                     imageVector = Icons.Default.Delete,
@@ -267,31 +273,50 @@ fun GaleriaScreen(
             },
             title = { Text("Eliminar fotografía") },
             text = {
-                Text("¿Estás seguro de que deseas eliminar esta fotografía de evidencia? Esta acción no se puede deshacer.")
+                Text("¿Estás seguro de que deseas eliminar esta fotografía de evidencia? Esta acción eliminará la entrada de Room y del almacenamiento.")
             },
             confirmButton = {
                 Button(
                     onClick = {
                         val evidencia = evidenciaEliminar
-                        if (evidencia != null) {
-                            val eliminada = probadorViewModel.eliminarEvidencia(evidencia.rutaFoto)
-                            mensajeError = !eliminada
+                        if (evidencia != null && !eliminando) {
+                            eliminando = true
+                            mensajeError = false
+
+                            coroutineScope.launch {
+                                try {
+                                    val eliminada = probadorViewModel.eliminarEvidencia(evidencia.rutaFoto)
+                                    mensajeError = !eliminada
+                                } catch (e: Exception) {
+                                    mensajeError = true
+                                } finally {
+                                    eliminando = false
+                                    evidenciaEliminar = null
+                                }
+                            }
                         }
-                        evidenciaEliminar = null
                     },
+                    enabled = !eliminando,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text(
-                        if (eliminando) {
-                            "ELIMINANDO..."
-                        } else {
-                            "ELIMINAR"
-                        }
-                    )
+                    if (eliminando) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onError,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("ELIMINANDO...")
+                    } else {
+                        Text("ELIMINAR")
+                    }
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { evidenciaEliminar = null }) {
+                OutlinedButton(
+                    onClick = { evidenciaEliminar = null },
+                    enabled = !eliminando
+                ) {
                     Text("CANCELAR")
                 }
             }
