@@ -16,6 +16,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.File
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ProbadorViewModel(
     application: Application,
@@ -186,43 +190,46 @@ class ProbadorViewModel(
         }
     }
 
-    fun guardarEvidencia(id: Int, imagen: Bitmap) {
-        if (cargando) return
+    fun guardarEvidencia(id: Int, imagen: Bitmap?) {
+        // 1. Validación de seguridad contra NullPointerException
+        if (imagen == null || imagen.isRecycled) {
+            return
+        }
 
-        val indice = probadores.indexOfFirst { it.id == id }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val indice = probadores.indexOfFirst { it.id == id }
 
-        if (indice != -1) {
-            val probador = probadores[indice]
-            val ruta = storage.guardarFoto(id, imagen)
-            val fecha = System.currentTimeMillis()
+                if (indice != -1) {
+                    val probador = probadores[indice]
 
-            val nuevoId = maxOf(
-                fecha,
-                (evidencias.maxOfOrNull { it.id } ?: 0L) + 1L
-            )
+                    // 2. Guardar foto en almacenamiento interno (hilo IO)
+                    val ruta = storage.guardarFoto(id, imagen)
+                    val fecha = System.currentTimeMillis()
 
-            val evidencia = Evidencia(
-                id = nuevoId,
-                idProbador = probador.id,
-                numeroProbador = probador.numero,
-                rutaFoto = ruta,
-                fecha = fecha
-            )
+                    withContext(Dispatchers.Main) {
+                        val nuevaEvidencia = Evidencia(
+                            id = fecha,
+                            idProbador = probador.id,
+                            numeroProbador = probador.numero,
+                            rutaFoto = ruta,
+                            fecha = fecha
+                        )
 
-            val actualizado = probador.copy(
-                estado = "Pendiente de revisión",
-                inicioOcupacion = null,
-                fotoEvidencia = ruta
-            )
+                        evidencias.add(nuevaEvidencia)
+                        storage.guardarHistorial(evidencias)
 
-            evidencias.add(0, evidencia)
-            probadores[indice] = actualizado
+                        probadores[indice] = probador.copy(
+                            estado = "Pendiente de revisión",
+                            inicioOcupacion = null,
+                            fotoEvidencia = ruta
+                        )
 
-            viewModelScope.launch(Dispatchers.IO) {
-                database.withTransaction {
-                    evidenciaDao.guardarEvidencia(evidencia)
-                    probadorDao.guardarProbador(actualizado)
+                        guardarProbadores()
+                    }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

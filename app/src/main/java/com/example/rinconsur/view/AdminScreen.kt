@@ -1,29 +1,28 @@
-
 package com.example.rinconsur.view
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.MeetingRoom
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.rinconsur.viewmodel.ProbadorViewModel
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminScreen(
     probadorViewModel: ProbadorViewModel,
@@ -39,9 +38,7 @@ fun AdminScreen(
     val revision = probadores.count { it.estado == "Pendiente de revisión" }
     val mantencion = probadores.count { it.estado == "En mantención" }
 
-    var tiempoActual by remember {
-        mutableLongStateOf(System.currentTimeMillis())
-    }
+    var tiempoActual by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -51,85 +48,261 @@ fun AdminScreen(
     }
 
     val probadoresOcupados = probadores
-        .filter {
-            it.estado == "Ocupado" &&
-                    it.inicioOcupacion != null
-        }
+        .filter { it.estado == "Ocupado" && it.inicioOcupacion != null }
         .sortedBy { it.inicioOcupacion }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("PANEL ADMINISTRADOR")
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text("RESUMEN DE PROBADORES")
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text("Disponibles: $disponibles")
-        Text("Ocupados: $ocupados")
-        Text("Pendientes de revisión: $revision")
-        Text("En mantención: $mantencion")
-        Text("Total de probadores: ${probadores.size}")
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text("PROBADORES CON MAYOR OCUPACIÓN")
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (probadoresOcupados.isEmpty()) {
-            Text("No hay probadores ocupados")
-        } else {
-            probadoresOcupados.forEach { probador ->
-                val minutos = (
-                        (tiempoActual - probador.inicioOcupacion!!)
-                            .coerceAtLeast(0L) / 60000
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Panel Administrador",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                         )
+                        Surface(
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "ADMIN",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onCerrarSesion) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                            contentDescription = "Cerrar Sesión",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            // Header del total
+            Text(
+                text = "Resumen de Probadores (${probadores.size} totales)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
 
-                Text(
-                    "Probador ${probador.numero}: $minutos min"
+            // Cuadrícula de Métricas KPI
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MetricCard(
+                    title = "Disponibles",
+                    count = disponibles,
+                    icon = Icons.Default.CheckCircle,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+                MetricCard(
+                    title = "Ocupados",
+                    count = ocupados,
+                    icon = Icons.Default.Timer,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.weight(1f)
                 )
             }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MetricCard(
+                    title = "En Revisión",
+                    count = revision,
+                    icon = Icons.Default.Warning,
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+                MetricCard(
+                    title = "Mantención",
+                    count = mantencion,
+                    icon = Icons.Default.MeetingRoom,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Sección Ocupaciones Más Largas
+            Text(
+                text = "Probadores con Mayor Ocupación",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            if (probadoresOcupados.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    Text(
+                        text = "No hay probadores ocupados en este momento.",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    probadoresOcupados.forEach { probador ->
+                        val minutos = ((tiempoActual - probador.inicioOcupacion!!).coerceAtLeast(0L) / 60000)
+
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MeetingRoom,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Probador #${probador.numero}",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                AssistChip(
+                                    onClick = { },
+                                    label = { Text("$minutos min") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Timer,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Sección Acciones de Administración
+            Text(
+                text = "Acciones de Administración",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            // Botón Principal de Admin: Gestionar Usuarios (SQLite)
+            Button(
+                onClick = onGestionarUsuarios,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
+                Icon(imageVector = Icons.Default.People, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("GESTIONAR USUARIOS")
+            }
+
+            // Botón Secundario 1: Gestionar Probadores
+            OutlinedButton(
+                onClick = onGestionarProbadores,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
+                Icon(imageVector = Icons.Default.AdminPanelSettings, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("GESTIONAR PROBADORES")
+            }
+
+            // Botón Secundario 2: Galería de Evidencias
+            OutlinedButton(
+                onClick = onVerGaleria,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
+                Icon(imageVector = Icons.Default.PhotoLibrary, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("VER GALERÍA DE EVIDENCIAS")
+            }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = onGestionarUsuarios,
-            modifier = Modifier.fillMaxWidth()
+@Composable
+private fun MetricCard(
+    title: String,
+    count: Int,
+    icon: ImageVector,
+    containerColor: androidx.compose.ui.graphics.Color,
+    contentColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("GESTIONAR USUARIOS")
-        }
-
-        Button(
-            onClick = onGestionarProbadores,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("GESTIONAR PROBADORES")
-        }
-
-        Button(
-            onClick = onVerGaleria,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("VER GALERÍA DE EVIDENCIAS")
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = onCerrarSesion,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("CERRAR SESIÓN")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
