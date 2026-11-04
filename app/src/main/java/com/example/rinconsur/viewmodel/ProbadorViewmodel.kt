@@ -11,6 +11,10 @@ import com.example.rinconsur.storage.ProbadorStorage
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ProbadorViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -136,33 +140,47 @@ class ProbadorViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun guardarEvidencia(id: Int, imagen: Bitmap) {
-        val indice = probadores.indexOfFirst { it.id == id }
+    fun guardarEvidencia(id: Int, imagen: Bitmap?) {
+        // 1. Validación de seguridad contra NullPointerException
+        if (imagen == null || imagen.isRecycled) {
+            return
+        }
 
-        if (indice != -1) {
-            val probador = probadores[indice]
-            val ruta = storage.guardarFoto(id, imagen)
-            val fecha = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val indice = probadores.indexOfFirst { it.id == id }
 
-            evidencias.add(
-                Evidencia(
-                    id = fecha,
-                    idProbador = probador.id,
-                    numeroProbador = probador.numero,
-                    rutaFoto = ruta,
-                    fecha = fecha
-                )
-            )
+                if (indice != -1) {
+                    val probador = probadores[indice]
 
-            storage.guardarHistorial(evidencias)
+                    // 2. Guardar foto en almacenamiento interno (hilo IO)
+                    val ruta = storage.guardarFoto(id, imagen)
+                    val fecha = System.currentTimeMillis()
 
-            probadores[indice] = probador.copy(
-                estado = "Pendiente de revisión",
-                inicioOcupacion = null,
-                fotoEvidencia = ruta
-            )
+                    withContext(Dispatchers.Main) {
+                        val nuevaEvidencia = Evidencia(
+                            id = fecha,
+                            idProbador = probador.id,
+                            numeroProbador = probador.numero,
+                            rutaFoto = ruta,
+                            fecha = fecha
+                        )
 
-            guardarProbadores()
+                        evidencias.add(nuevaEvidencia)
+                        storage.guardarHistorial(evidencias)
+
+                        probadores[indice] = probador.copy(
+                            estado = "Pendiente de revisión",
+                            inicioOcupacion = null,
+                            fotoEvidencia = ruta
+                        )
+
+                        guardarProbadores()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

@@ -44,14 +44,17 @@ class ProbadorStorage(private val context: Context) {
         return archivo.absolutePath
     }
 
-    fun obtenerFoto(ruta: String): Bitmap? {
+    fun obtenerFoto(ruta: String?): Bitmap? {
+        if (ruta.isNullOrEmpty()) return null
         val archivo = File(ruta)
+        if (!archivo.exists()) return null
 
-        if (!archivo.exists()) {
-            return null
+        return try {
+            BitmapFactory.decodeFile(archivo.absolutePath)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
-
-        return BitmapFactory.decodeFile(archivo.absolutePath)
     }
 
     fun guardarHistorial(evidencias: List<Evidencia>) {

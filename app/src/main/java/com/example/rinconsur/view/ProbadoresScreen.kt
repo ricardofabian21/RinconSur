@@ -1,38 +1,42 @@
-
 package com.example.rinconsur.view
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.rinconsur.viewmodel.ProbadorViewModel
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProbadoresScreen(
     probadorViewModel: ProbadorViewModel,
@@ -41,44 +45,46 @@ fun ProbadoresScreen(
 ) {
     val context = LocalContext.current
 
-    var tiempoActual by remember {
-        mutableLongStateOf(System.currentTimeMillis())
-    }
+    var tiempoActual by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var fotografia by remember { mutableStateOf<Bitmap?>(null) }
+    var probadorFotografiado by remember { mutableStateOf<Int?>(null) }
+    var probadorPendiente by remember { mutableStateOf<Int?>(null) }
 
-    var fotografia by remember {
-        mutableStateOf<Bitmap?>(null)
-    }
-
-    var probadorFotografiado by remember {
-        mutableStateOf<Int?>(null)
-    }
-
-    var probadorPendiente by remember {
-        mutableStateOf<Int?>(null)
-    }
-
-    val camara = rememberLauncherForActivityResult(
+    // Launcher de Cámara
+    val camaraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { imagen ->
         if (imagen != null) {
             fotografia = imagen
             probadorFotografiado = probadorPendiente
         }
-
         probadorPendiente = null
     }
 
-    val galeria = rememberLauncherForActivityResult(
+    // Launcher para solicitar el Permiso de Cámara
+    val permisoCamaraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { esConcedido ->
+        if (esConcedido) {
+            camaraLauncher.launch(null)
+        } else {
+            probadorPendiente = null
+            Toast.makeText(
+                context,
+                "Se requiere permiso de cámara para tomar la evidencia",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    // Launcher para Galería
+    val galeriaLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
             try {
                 val entrada = context.contentResolver.openInputStream(uri)
-
-                val imagen = entrada.use {
-                    BitmapFactory.decodeStream(it)
-                }
-
+                val imagen = entrada.use { BitmapFactory.decodeStream(it) }
                 if (imagen != null) {
                     fotografia = imagen
                     probadorFotografiado = probadorPendiente
@@ -87,7 +93,6 @@ fun ProbadoresScreen(
                 fotografia = null
             }
         }
-
         probadorPendiente = null
     }
 
@@ -98,187 +103,310 @@ fun ProbadoresScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .padding(16.dp)
-    ) {
-        Text("LISTA DE PROBADORES")
-
-        Button(onClick = onVolver) {
-            Text("VOLVER")
-        }
-
-        if (esAdministrador) {
-            Button(
-                onClick = {
-                    probadorViewModel.agregarProbador()
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Gestión de Probadores",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
                 },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("AGREGAR PROBADOR")
+                navigationIcon = {
+                    IconButton(onClick = onVolver) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Volver"
+                        )
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            if (esAdministrador) {
+                ExtendedFloatingActionButton(
+                    onClick = { probadorViewModel.agregarProbador() },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("Nuevo Probador") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             }
         }
-
-        LazyColumn {
-            items(probadorViewModel.probadores) { probador ->
-                Column(
-                    modifier = Modifier.padding(vertical = 8.dp)
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(bottom = 80.dp, top = 8.dp)
+        ) {
+            items(probadorViewModel.probadores, key = { it.id }) { probador ->
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Probador ${probador.numero}")
-                    Text("Estado: ${probador.estado}")
-
-                    if (
-                        probador.estado == "Ocupado" &&
-                        probador.inicioOcupacion != null
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        val minutos = (
-                                (tiempoActual - probador.inicioOcupacion)
-                                    .coerceAtLeast(0L) / 60000
+                        // Header con número de probador y Badge de Estado
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Probador #${probador.numero}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            EstadoBadge(estado = probador.estado)
+                        }
+
+                        // Contador de Tiempo
+                        if (probador.estado == "Ocupado" && probador.inicioOcupacion != null) {
+                            val minutos = ((tiempoActual - probador.inicioOcupacion).coerceAtLeast(0L) / 60000)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Timer,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.error
                                 )
-
-                        Text("Tiempo ocupado: $minutos min")
-                    }
-
-                    Button(
-                        onClick = {
-                            fotografia = null
-                            probadorFotografiado = null
-                            probadorPendiente = probador.id
-                            camara.launch(null)
+                                Text(
+                                    text = "Tiempo transcurrido: $minutos min",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
-                    ) {
-                        Text("TOMAR FOTO DE ROPA")
-                    }
 
-                    Button(
-                        onClick = {
-                            fotografia = null
-                            probadorFotografiado = null
-                            probadorPendiente = probador.id
-                            galeria.launch("image/*")
-                        }
-                    ) {
-                        Text("SELECCIONAR DE GALERÍA")
-                    }
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant)
 
-                    if (
-                        probadorFotografiado == probador.id &&
-                        fotografia != null
-                    ) {
-                        Text("Vista previa de evidencia")
-
-                        Image(
-                            bitmap = fotografia!!.asImageBitmap(),
-                            contentDescription = "Fotografía seleccionada",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(180.dp)
-                                .padding(vertical = 8.dp),
-                            contentScale = ContentScale.Fit
+                        // Captura de Evidencias
+                        Text(
+                            text = "Evidencia de Ropa / Estado",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        Button(
-                            onClick = {
-                                val imagen = fotografia
-
-                                if (imagen != null) {
-                                    probadorViewModel.guardarEvidencia(
-                                        probador.id,
-                                        imagen
-                                    )
-
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Botón Cámara con Validación de Permisos
+                            OutlinedButton(
+                                onClick = {
                                     fotografia = null
                                     probadorFotografiado = null
+                                    probadorPendiente = probador.id
+
+                                    val tienePermiso = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.CAMERA
+                                    ) == PackageManager.PERMISSION_GRANTED
+
+                                    if (tienePermiso) {
+                                        camaraLauncher.launch(null)
+                                    } else {
+                                        permisoCamaraLauncher.launch(Manifest.permission.CAMERA)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Cámara")
+                            }
+
+                            // Botón Galería
+                            OutlinedButton(
+                                onClick = {
+                                    fotografia = null
+                                    probadorFotografiado = null
+                                    probadorPendiente = probador.id
+                                    galeriaLauncher.launch("image/*")
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Photo, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Galería")
+                            }
+                        }
+
+                        // Vista previa antes de confirmar
+                        AnimatedVisibility(visible = probadorFotografiado == probador.id && fotografia != null) {
+                            val fotoPreview = fotografia
+                            if (fotoPreview != null && !fotoPreview.isRecycled) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Vista previa seleccionada:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(180.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                    ) {
+                                        Image(
+                                            bitmap = fotoPreview.asImageBitmap(),
+                                            contentDescription = "Vista previa",
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            val imagenAGuardar = fotografia
+                                            // Limpiamos estados de la UI primero para no crashhear
+                                            fotografia = null
+                                            probadorFotografiado = null
+
+                                            if (imagenAGuardar != null && !imagenAGuardar.isRecycled) {
+                                                probadorViewModel.guardarEvidencia(probador.id, imagenAGuardar)
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("CONFIRMAR REPORTE")
+                                    }
                                 }
                             }
-                        ) {
-                            Text("CONFIRMAR REPORTE")
-                        }
-                    }
-
-                    if (probador.fotoEvidencia != null) {
-                        val evidencia = remember(probador.fotoEvidencia) {
-                            probadorViewModel.obtenerEvidencia(probador.id)
                         }
 
-                        if (evidencia != null) {
-                            Text("Evidencia guardada")
+                        // Muestra de evidencia guardada
+                        if (!probador.fotoEvidencia.isNullOrEmpty()) {
+                            val evidenciaBitmap = remember(probador.fotoEvidencia) {
+                                probadorViewModel.obtenerEvidencia(probador.id)
+                            }
 
-                            Image(
-                                bitmap = evidencia.asImageBitmap(),
-                                contentDescription = "Evidencia del probador",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp)
-                                    .padding(vertical = 8.dp),
-                                contentScale = ContentScale.Fit
+                            if (evidenciaBitmap != null && !evidenciaBitmap.isRecycled) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "Evidencia Guardada:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(140.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
+                                        color = MaterialTheme.colorScheme.surfaceContainerLow
+                                    ) {
+                                        Image(
+                                            bitmap = evidenciaBitmap.asImageBitmap(),
+                                            contentDescription = "Evidencia guardada",
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Opciones de Administrador
+                        if (esAdministrador) {
+                            Divider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                            Text(
+                                text = "Cambiar Estado (Admin):",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
-                    }
 
-                    if (esAdministrador) {
-                        Row {
-                            Button(
-                                onClick = {
-                                    probadorViewModel.cambiarEstado(
-                                        probador.id,
-                                        "Disponible"
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = probador.estado == "Disponible",
+                                        onClick = { probadorViewModel.cambiarEstado(probador.id, "Disponible") },
+                                        label = { Text("Libre") },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    FilterChip(
+                                        selected = probador.estado == "Ocupado",
+                                        onClick = { probadorViewModel.cambiarEstado(probador.id, "Ocupado") },
+                                        label = { Text("Ocupado") },
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
-                            ) {
-                                Text("LIBRE")
-                            }
-
-                            Button(
-                                onClick = {
-                                    probadorViewModel.cambiarEstado(
-                                        probador.id,
-                                        "Ocupado"
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = probador.estado == "Pendiente de revisión",
+                                        onClick = { probadorViewModel.cambiarEstado(probador.id, "Pendiente de revisión") },
+                                        label = { Text("Revisión") },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    FilterChip(
+                                        selected = probador.estado == "En mantención",
+                                        onClick = { probadorViewModel.cambiarEstado(probador.id, "En mantención") },
+                                        label = { Text("Mantención") },
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
-                            ) {
-                                Text("OCUPADO")
-                            }
-                        }
-
-                        Row {
-                            Button(
-                                onClick = {
-                                    probadorViewModel.cambiarEstado(
-                                        probador.id,
-                                        "Pendiente de revisión"
-                                    )
-                                }
-                            ) {
-                                Text("REVISIÓN")
                             }
 
-                            Button(
-                                onClick = {
-                                    probadorViewModel.cambiarEstado(
-                                        probador.id,
-                                        "En mantención"
-                                    )
-                                }
+                            TextButton(
+                                onClick = { probadorViewModel.eliminarProbador(probador.id) },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                modifier = Modifier.align(Alignment.End)
                             ) {
-                                Text("MANTENCIÓN")
+                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Eliminar Probador")
                             }
-                        }
-
-                        Button(
-                            onClick = {
-                                probadorViewModel.eliminarProbador(
-                                    probador.id
-                                )
-                            }
-                        ) {
-                            Text("ELIMINAR")
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EstadoBadge(estado: String) {
+    val (backgroundColor, textColor) = when (estado) {
+        "Disponible" -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+        "Ocupado" -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+        "Pendiente de revisión" -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = backgroundColor
+    ) {
+        Text(
+            text = estado.uppercase(),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = textColor
+        )
     }
 }
