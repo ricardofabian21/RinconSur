@@ -18,6 +18,9 @@ interface ProbadorDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun guardarProbador(probador: Probador)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarProbadores(probadores: List<Probador>)
+
     @Update
     suspend fun actualizarProbador(probador: Probador)
 

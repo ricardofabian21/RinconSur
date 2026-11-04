@@ -17,6 +17,23 @@ class ProbadorStorage(private val context: Context) {
         Context.MODE_PRIVATE
     )
 
+    fun migracionRoomCompletada(): Boolean {
+        return preferencias.getBoolean(
+            "migracion_room_v2_completada",
+            false
+        )
+    }
+
+    fun marcarMigracionRoomCompletada() {
+        val guardado = preferencias.edit()
+            .putBoolean("migracion_room_v2_completada", true)
+            .commit()
+
+        check(guardado) {
+            "No se pudo registrar la migración a Room"
+        }
+    }
+
     fun guardar(datos: String) {
         preferencias.edit()
             .putString("lista", datos)
@@ -75,7 +92,11 @@ class ProbadorStorage(private val context: Context) {
     }
 
     fun obtenerHistorial(): List<Evidencia> {
-        val datos = preferencias.getString("historial", "[]") ?: "[]"
+        val datos = preferencias.getString(
+            "historial",
+            "[]"
+        ) ?: "[]"
+
         val lista = JSONArray(datos)
         val evidencias = mutableListOf<Evidencia>()
 
@@ -97,7 +118,10 @@ class ProbadorStorage(private val context: Context) {
     }
 
     fun eliminarFoto(ruta: String): Boolean {
-        val archivo = File(context.filesDir, File(ruta).name)
+        val archivo = File(
+            context.filesDir,
+            File(ruta).name
+        )
 
         if (!archivo.exists()) {
             return true

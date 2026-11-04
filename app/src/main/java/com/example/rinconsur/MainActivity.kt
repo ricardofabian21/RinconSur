@@ -71,7 +71,19 @@ class MainActivity : ComponentActivity() {
                     }
                 )
 
-                val probadorViewModel: ProbadorViewModel = viewModel()
+                val probadorViewModel: ProbadorViewModel = viewModel(
+                    factory = object : ViewModelProvider.Factory {
+                        @Suppress("UNCHECKED_CAST")
+                        override fun <T : ViewModel> create(
+                            modelClass: Class<T>
+                        ): T {
+                            return ProbadorViewModel(
+                                application,
+                                database
+                            ) as T
+                        }
+                    }
+                )
 
                 var pantalla by remember { mutableStateOf("Login") }
                 var usuarioEditar by remember { mutableStateOf<Usuario?>(null) }

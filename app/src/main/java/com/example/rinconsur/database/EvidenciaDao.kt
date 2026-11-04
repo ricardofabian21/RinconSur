@@ -16,6 +16,9 @@ interface EvidenciaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun guardarEvidencia(evidencia: Evidencia)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun guardarEvidencias(evidencias: List<Evidencia>)
+
     @Delete
     suspend fun eliminarEvidencia(evidencia: Evidencia)
 }
