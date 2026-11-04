@@ -28,8 +28,10 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun GaleriaScreen(
     probadorViewModel: ProbadorViewModel,
@@ -136,7 +138,13 @@ fun GaleriaScreen(
                 ) {
                     items(evidenciasOrdenadas, key = { it.id }) { evidencia ->
                         ElevatedCard(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItem( // <-- ANIMACIÓN DE REORDENAMIENTO
+                                    fadeInSpec = tween(durationMillis = 300),
+                                    fadeOutSpec = tween(durationMillis = 300),
+                                    placementSpec = tween(durationMillis = 350)
+                                ),
                             shape = RoundedCornerShape(16.dp)
                         ) {
                             Column(

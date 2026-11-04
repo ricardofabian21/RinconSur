@@ -9,6 +9,12 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -61,7 +67,7 @@ fun ProbadoresScreen(
         probadorPendiente = null
     }
 
-    // Launcher para solicitar el Permiso de Cámara
+    // Launcher para solicitar Permiso de Cámara
     val permisoCamaraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { esConcedido ->
@@ -142,9 +148,18 @@ fun ProbadoresScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 80.dp, top = 8.dp)
         ) {
-            items(probadorViewModel.probadores, key = { it.id }) { probador ->
+            items(
+                items = probadorViewModel.probadores,
+                key = { it.id } // KEY indispensable para animar elementos de la lista
+            ) { probador ->
                 ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateItem( // ANIMACIÓN DE REORDENAMIENTO Y ELIMINACIÓN DE TARJETAS
+                            fadeInSpec = tween(durationMillis = 300),
+                            fadeOutSpec = tween(durationMillis = 300),
+                            placementSpec = tween(durationMillis = 350)
+                        ),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(
@@ -153,7 +168,7 @@ fun ProbadoresScreen(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Header con número de probador y Badge de Estado
+                        // Header con número de probador y Badge Animado de Estado
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -165,15 +180,22 @@ fun ProbadoresScreen(
                                 fontWeight = FontWeight.Bold
                             )
 
+                            // Badge con animación de transición de colores
                             EstadoBadge(estado = probador.estado)
                         }
 
-                        // Contador de Tiempo
-                        if (probador.estado == "Ocupado" && probador.inicioOcupacion != null) {
-                            val minutos = ((tiempoActual - probador.inicioOcupacion).coerceAtLeast(0L) / 60000)
+                        // Contador de Tiempo con animación de entrada y salida
+                        AnimatedVisibility(
+                            visible = probador.estado == "Ocupado" && probador.inicioOcupacion != null,
+                            enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
+                            exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                        ) {
+                            val inicio = probador.inicioOcupacion ?: System.currentTimeMillis()
+                            val minutos = ((tiempoActual - inicio).coerceAtLeast(0L) / 60000)
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(top = 4.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Timer,
@@ -203,7 +225,7 @@ fun ProbadoresScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Botón Cámara con Validación de Permisos
+                            // Botón Cámara
                             OutlinedButton(
                                 onClick = {
                                     fotografia = null
@@ -244,18 +266,33 @@ fun ProbadoresScreen(
                             }
                         }
 
-                        // Vista previa antes de confirmar
-                        AnimatedVisibility(visible = probadorFotografiado == probador.id && fotografia != null) {
+                        // Vista Previa desplegable con animación suave
+                        AnimatedVisibility(
+                            visible = probadorFotografiado == probador.id && fotografia != null,
+                            enter = expandVertically(
+                                animationSpec = tween(durationMillis = 350)
+                            ) + fadeIn(
+                                animationSpec = tween(durationMillis = 350)
+                            ),
+                            exit = shrinkVertically(
+                                animationSpec = tween(durationMillis = 350)
+                            ) + fadeOut(
+                                animationSpec = tween(durationMillis = 350)
+                            )
+                        ) {
                             val fotoPreview = fotografia
                             if (fotoPreview != null && !fotoPreview.isRecycled) {
                                 Column(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
                                         text = "Vista previa seleccionada:",
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
 
                                     Surface(
@@ -275,7 +312,6 @@ fun ProbadoresScreen(
                                     Button(
                                         onClick = {
                                             val imagenAGuardar = fotografia
-                                            // Limpiamos estados de la UI primero para no crashhear
                                             fotografia = null
                                             probadorFotografiado = null
 
@@ -388,25 +424,38 @@ fun ProbadoresScreen(
     }
 }
 
+
 @Composable
 private fun EstadoBadge(estado: String) {
-    val (backgroundColor, textColor) = when (estado) {
+    val (targetBackgroundColor, targetTextColor) = when (estado) {
         "Disponible" -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
         "Ocupado" -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
         "Pendiente de revisión" -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
+    val animatedBackgroundColor by animateColorAsState(
+        targetValue = targetBackgroundColor,
+        animationSpec = tween(durationMillis = 400),
+        label = "BadgeBackgroundColor"
+    )
+
+    val animatedTextColor by animateColorAsState(
+        targetValue = targetTextColor,
+        animationSpec = tween(durationMillis = 400),
+        label = "BadgeTextColor"
+    )
+
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = backgroundColor
+        color = animatedBackgroundColor
     ) {
         Text(
             text = estado.uppercase(),
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = textColor
+            color = animatedTextColor
         )
     }
 }
